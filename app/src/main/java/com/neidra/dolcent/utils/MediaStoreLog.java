@@ -16,7 +16,7 @@ import java.util.Locale;
 
 // MediaStoreLog.java
 public final class MediaStoreLog {
-    private static final String DIR = "UdDjayaLog";
+    private static final String DIR = "DolcentLog";
     private static Uri cachedTodayUri;
 
     /** Dapatkan (atau buat) file log hari ini di Downloads, lalu append 1 baris. */

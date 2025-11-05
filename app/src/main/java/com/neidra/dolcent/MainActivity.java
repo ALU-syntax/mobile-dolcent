@@ -25,15 +25,18 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.Toast;
 
 import com.dantsu.escposprinter.connection.DeviceConnection;
 import com.dantsu.escposprinter.connection.bluetooth.BluetoothConnection;
 import com.dantsu.escposprinter.connection.bluetooth.BluetoothPrintersConnections;
 import com.dantsu.escposprinter.textparser.PrinterTextParserImg;
+import com.neidra.dolcent.utils.MediaStoreLog;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -74,6 +77,37 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    public static String formatRupiah(String angka, String prefix) {
+        // Remove all non-digit and non-comma characters
+        String numberString = angka.replaceAll("[^,\\d]", "");
+        String[] split = numberString.split(",");
+        int sisa = split[0].length() % 3;
+        String rupiah = split[0].substring(0, sisa);
+        String ribuan = split[0].substring(sisa);
+
+        // Use regex to find all groups of 3 digits
+        StringBuilder ribuanBuilder = new StringBuilder();
+        for (int i = 0; i < ribuan.length(); i += 3) {
+            if (ribuanBuilder.length() > 0) {
+                ribuanBuilder.append(".");
+            }
+            ribuanBuilder.append(ribuan.substring(i, Math.min(i + 3, ribuan.length())));
+        }
+
+        if (ribuanBuilder.length() > 0) {
+            String separator = sisa > 0 ? "." : "";
+            rupiah += separator + ribuanBuilder.toString();
+        }
+
+        // Append the decimal part if it exists
+        if (split.length > 1) {
+            rupiah += "," + split[1];
+        }
+
+        // Return the formatted string with prefix if provided
+        return prefix == null ? rupiah : "Rp. " + rupiah;
+    }
+
     private class MainWebViewClient extends WebViewClient {
 
         @Override
@@ -106,17 +140,23 @@ public class MainActivity extends AppCompatActivity {
         call.enqueue(new Callback<GetStruk>() {
             @Override
             public void onResponse(Call<GetStruk> call, Response<GetStruk> response) {
+
+                Log.d(TAG, "onResponse: " + id);
                 Penjualan penjualan = response.body().getPenjualan();
                 List<Detail> detail = response.body().getDetail();
 
 
-                
+                Toast.makeText(MainActivity.super.getApplicationContext(), response.body().toString(), Toast.LENGTH_LONG).show();
+                String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
+                MediaStoreLog.append(MainActivity.super.getApplicationContext(), ts + " [API_GET_STRUK_SUCCESS] " + response.body().toString());
                 printBluetooth(penjualan, detail);
             }
 
             @Override
             public void onFailure(Call<GetStruk> call, Throwable t) {
-
+                Toast.makeText(MainActivity.this, t.getMessage(), Toast.LENGTH_LONG).show();
+                String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
+                MediaStoreLog.append(MainActivity.super.getApplicationContext(), ts + " [API_GET_STRUK_FAILURE] " + t.getMessage());
             }
         });
     }
@@ -212,6 +252,9 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void onError(AsyncEscPosPrinter asyncEscPosPrinter, int codeException) {
                             Log.e("Async.OnPrintFinished", "AsyncEscPosPrint.OnPrintFinished : An error occurred !");
+                            Toast.makeText(MainActivity.super.getApplicationContext(), String.valueOf(codeException), Toast.LENGTH_LONG).show();
+                            String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date());
+                            MediaStoreLog.append(MainActivity.super.getApplicationContext(), ts + " [BT_PRINTER_BLUETOOTH_ERROR] " + String.valueOf(codeException));
                         }
 
                         @Override
@@ -228,11 +271,26 @@ public class MainActivity extends AppCompatActivity {
     public AsyncEscPosPrinter getAsyncEscPosPrinter(DeviceConnection printerConnection, Penjualan penjualan, List<Detail> detail) {
         String item = "";
         for (Detail data : detail){
-            item += "[L]<b>"+ data.getQty() +"</b>[C]<b>" +data.getBarang()+"</b>[R]<b>"+ data.getTotal() +"</b>\n";
+//            item += "[L]<b>"+ data.getQty() +"</b>[C]<b>" +data.getBarang()+"</b>[R]<b>"+ data.getTotal() +"</b>\n";
+            item += "[L]<b>"+ data.getQty() +"</b><b>" +data.getBarang()+"</b>[R]<b>"+ formatRupiah(String.valueOf(data.getTotal()), "Rp. ") +"</b>\n";
         }
 
         String pelanggan = penjualan.getPelanggan() != null ? penjualan.getPelanggan() : "-";
         SimpleDateFormat format = new SimpleDateFormat("'on' yyyy-MM-dd 'at' HH:mm:ss");
+
+        String discount = "0";
+        if(penjualan.getId_discount() != null){
+
+            if(penjualan.getTipe() == "1"){ //jika discount persentase
+                int nominalDiscount = Integer.parseInt(penjualan.getSubtotal()) - Integer.parseInt(penjualan.getTotal());
+                discount = String.valueOf(nominalDiscount);
+            }else{ //jika discount nominal langsung
+                discount = penjualan.getJumlah();
+            }
+        }
+
+        String biayaLayanan = penjualan.getBiaya_layanan() != null ? penjualan.getBiaya_layanan() : "0";
+
         AsyncEscPosPrinter printer = new AsyncEscPosPrinter(printerConnection, 203, 48f, 32);
         return printer.addTextToPrint(
                 "[C]<img>" + PrinterTextParserImg.bitmapToHexadecimalString(printer, this.getApplicationContext().getResources().getDrawableForDensity(R.drawable.logo, DisplayMetrics.DENSITY_MEDIUM)) + "</img>\n" +
@@ -254,15 +312,15 @@ public class MainActivity extends AppCompatActivity {
                         item +
                         "[L]\n" +
                         "[C]--------------------------------\n" +
-                        "[L]HARGA :[C][R]Rp. " + penjualan.getTotal() + "\n" +
-                        "[L]Discount :[C][R]Rp. 0\n" +
-                        "[L]PPN :[C][R]Rp. 0\n" +
-                        "[L]Biaya Layanan :[C][R]Rp. 0\n" +
+                        "[L]HARGA :[R]" + formatRupiah(String.valueOf(penjualan.getSubtotal()), "Rp. ") + "\n" +
+                        "[L]Discount :[R]" + formatRupiah(discount, "Rp. ") + "\n" +
+                        "[L]PPN :[R]" + formatRupiah(penjualan.getPpn(), "Rp. ") + "\n" +
+                        "[L]Biaya Layanan :[R]" + formatRupiah(biayaLayanan, "Rp. ") + "\n" +
                         "[L]Total :[C][R]Rp. " + penjualan.getTotal() + "\n" +
                         "[C]================================\n" +
                         "[L]\n" +
-                        "[L]<font size='big'>CUSTOMER</font>[C][R]" + pelanggan + "\n" +
-                        "[L]<font size='big'>PEMBAYARAN</font>[C][R]" + penjualan.getNama_tipe() + "\n" +
+                        "[L]<b>CUSTOMER</b>[C][R]" + pelanggan + "\n" +
+                        "[L]<b>PEMBAYARAN</b>[C][R]" + penjualan.getNama_tipe() + "\n" +
                         "\n" +
                         "[C]--------------------------------\n" +
                         "[C]<font size='big'>TERIMA KASIH</font>\n"

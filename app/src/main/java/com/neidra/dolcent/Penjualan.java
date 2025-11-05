@@ -22,6 +22,42 @@ public class Penjualan {
     private String alamat;
     private String nama_tipe;
     private String kasir;
+    private String nama_discount;
+    private String tipe;
+    private String jumlah;
+    private String status;
+
+    public String getNama_discount() {
+        return nama_discount;
+    }
+
+    public void setNama_discount(String nama_discount) {
+        this.nama_discount = nama_discount;
+    }
+
+    public String getTipe() {
+        return tipe;
+    }
+
+    public void setTipe(String tipe) {
+        this.tipe = tipe;
+    }
+
+    public String getJumlah() {
+        return jumlah;
+    }
+
+    public void setJumlah(String jumlah) {
+        this.jumlah = jumlah;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
 
     public String getId() {
         return id;
