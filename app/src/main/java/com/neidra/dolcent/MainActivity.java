@@ -34,6 +34,7 @@ import com.dantsu.escposprinter.textparser.PrinterTextParserImg;
 import com.neidra.dolcent.utils.MediaStoreLog;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +51,10 @@ public class MainActivity extends AppCompatActivity {
     private Retrofit retrofit;
 
     private static final String TAG = "MainActivity";
+
+    // Lebar karakter per baris harus sama dengan yang Anda set di printer (32 untuk 58mm).
+    private static final int LINE_CHARS = 28;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -159,6 +164,54 @@ public class MainActivity extends AppCompatActivity {
                 MediaStoreLog.append(MainActivity.super.getApplicationContext(), ts + " [API_GET_STRUK_FAILURE] " + t.getMessage());
             }
         });
+    }
+
+    // Bangun 1..N baris untuk satu item: baris-1 ada harga di kanan, sisanya nama barang turun ke bawah.
+    private String buildItemLines(Detail d) {
+        String qty   = String.valueOf(d.getQty());
+        String price = formatRupiah(String.valueOf(d.getTotal()), "Rp. ");
+        String name  = d.getBarang();
+
+        // Hitung ruang yang tersedia untuk nama di baris pertama
+        int rightWidth = price.length();            // lebar harga di kanan
+        int leftPrefix = qty.length() + 1;          // "QTY␠"
+        int firstNameWidth = LINE_CHARS - rightWidth - leftPrefix;
+        if (firstNameWidth < 1) firstNameWidth = 1;
+
+        // Wrap nama berdasarkan spasi
+        List<String> parts = wrapBySpace(name, firstNameWidth);
+
+        StringBuilder sb = new StringBuilder();
+        // Baris 1: [L]QTY + potongan nama pertama ... [R]HARGA
+        sb.append("[L]<b>").append(qty).append("</b> ")
+                .append(parts.get(0))
+                .append("[R]<b>").append(price).append("</b>\n");
+
+        // Baris lanjutan: hanya nama, diindent agar sejajar kolom nama
+        String indent = " ".repeat(leftPrefix);
+        for (int i = 1; i < parts.size(); i++) {
+            sb.append("[L]").append(indent).append(parts.get(i)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private List<String> wrapBySpace(String text, int maxWidth) {
+        List<String> lines = new ArrayList<>();
+        String[] words = text.split("\\s+");
+        StringBuilder line = new StringBuilder();
+        for (String w : words) {
+            if (line.length() == 0) {
+                line.append(w);
+            } else if (line.length() + 1 + w.length() <= maxWidth) {
+                line.append(' ').append(w);
+            } else {
+                lines.add(line.toString());
+                line.setLength(0);
+                line.append(w);
+            }
+        }
+        if (line.length() > 0) lines.add(line.toString());
+        return lines;
     }
 
     /*==============================================================================================
@@ -272,7 +325,8 @@ public class MainActivity extends AppCompatActivity {
         String item = "";
         for (Detail data : detail){
 //            item += "[L]<b>"+ data.getQty() +"</b>[C]<b>" +data.getBarang()+"</b>[R]<b>"+ data.getTotal() +"</b>\n";
-            item += "[L]<b>"+ data.getQty() +"</b><b>" +data.getBarang()+"</b>[R]<b>"+ formatRupiah(String.valueOf(data.getTotal()), "Rp. ") +"</b>\n";
+//            item += "[L]<b>"+ data.getQty() +"</b><b>" +data.getBarang()+"</b>[R]<b>"+ formatRupiah(String.valueOf(data.getTotal()), "Rp. ") +"</b>\n";
+            item += buildItemLines(data);
         }
 
         String pelanggan = penjualan.getPelanggan() != null ? penjualan.getPelanggan() : "-";
@@ -295,7 +349,6 @@ public class MainActivity extends AppCompatActivity {
         return printer.addTextToPrint(
                 "[C]<img>" + PrinterTextParserImg.bitmapToHexadecimalString(printer, this.getApplicationContext().getResources().getDrawableForDensity(R.drawable.logo, DisplayMetrics.DENSITY_MEDIUM)) + "</img>\n" +
                         "[L]\n" +
-                        "[C]<font size='big'>STRUK PENJUALAN</font>\n" +
                         "[C]<font size='wide'>DOLCENT</font>\n" +
                         "[C]" + penjualan.getKasir() + "\n" +
                         "[C]" + penjualan.getNohp() + "\n" +
@@ -316,14 +369,14 @@ public class MainActivity extends AppCompatActivity {
                         "[L]Discount :[R]" + formatRupiah(discount, "Rp. ") + "\n" +
                         "[L]PPN :[R]" + formatRupiah(penjualan.getPpn(), "Rp. ") + "\n" +
                         "[L]Biaya Layanan :[R]" + formatRupiah(biayaLayanan, "Rp. ") + "\n" +
-                        "[L]Total :[C][R]Rp. " + penjualan.getTotal() + "\n" +
+                        "[L]Total :[R]" + formatRupiah(penjualan.getTotal(), "Rp. ") + "\n" +
                         "[C]================================\n" +
                         "[L]\n" +
                         "[L]<b>CUSTOMER</b>[C][R]" + pelanggan + "\n" +
                         "[L]<b>PEMBAYARAN</b>[C][R]" + penjualan.getNama_tipe() + "\n" +
                         "\n" +
                         "[C]--------------------------------\n" +
-                        "[C]<font size='big'>TERIMA KASIH</font>\n"
+                        "[C]<font size='big'>Thank You!</font>\n"
         );
     }
 
